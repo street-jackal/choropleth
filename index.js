@@ -17,7 +17,7 @@ const legendSquareWidth = 40;
 const legendSquares = [10, 15, 20, 25, 30, 35, 50, 55, 60];
 var colorScale = d3.scaleThreshold()
     .domain(legendSquares)
-    .range(d3.schemeBlues[9]);
+    .range(d3.schemeGreens[9]);
 
 // declare the div for tooltip
 var tooltip = d3.select("body").append("div")

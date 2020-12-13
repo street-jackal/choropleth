@@ -1,3 +1,17 @@
+* Theme colors */
+:root {
+  --yellow: #98971a;
+  --purple: #b16286;
+  --black: #282828;
+  --green: #689d6a;
+  --tan: #f9f5d7;
+  --orange: #d65d0e;
+}
+
+html{
+    background-color: var(--tan);
+}
+
 body{
     display: flex;
     flex-direction: column;
@@ -48,6 +62,6 @@ h2{
     flex-shrink: 1;
     flex-basis: 0;
     stroke-width: 2;
-    stroke: black;
-    fill: white;
+    stroke: var(--black);
+    fill: var(--tan);
   }
