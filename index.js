@@ -1,11 +1,14 @@
-const mapData = 'https://cdn.freecodecamp.org/testable-projects-fcc/data/tree_map/kickstarter-funding-data.json';
+const mapData = 'https://cdn.freecodecamp.org/testable-projects-fcc/data/choropleth_map/counties.json';
+const educationData = 'https://cdn.freecodecamp.org/testable-projects-fcc/data/choropleth_map/for_user_education.json';
 
-const fontSize = 12;
+// The map svg
+var svg = d3.select("svg"),
+    width = +svg.attr("width"),
+    height = +svg.attr("height");
 
-// set the dimensions and margins of the graph
-var margin = { top: 10, right: 10, bottom: 10, left: 10 },
-    width = 1400 - margin.left - margin.right,
-    height = 1400 - margin.top - margin.bottom;
+// Map and projection
+var path = d3.geoPath();
+var projection = d3.geoAlbersUsa().scale(1300).translate([487.5, 305])
 
 // set tick width for legend
 const legendSquareWidth = 40;
@@ -21,167 +24,112 @@ var tooltip = d3.select("body").append("div")
     .attr("class", "tooltip")
     .style("opacity", 0);
 
-// set tick width for legend
-const legendSquareWidth = 40;
+// Load external data and wait
+d3.queue()
+    .defer(d3.json, mapData)
+    .defer(d3.json, educationData)
+    .await(ready);
 
-// format text to fit better into squares (thanks to Mike Bostock, developer of d3)
-function formatText(selection) {
-    selection.each(function () {
-        const node = d3.select(this);
-        const rectWidth = +node.attr('data-width');
-        let word;
-        const words = node.text().split(' ').reverse();
-        let line = [];
-        const x = node.attr('x');
-        const y = node.attr('y');
-        let tspan = node.text('').append('tspan').attr('x', x).attr('y', y);
-        let lineNumber = 0;
-        while (words.length > 1) {
-            word = words.pop();
-            line.push(word);
-            tspan.text(line.join(' '));
-            const tspanLength = tspan.node().getComputedTextLength();
-            if (tspanLength > rectWidth && line.length !== 1) {
-                line.pop();
-                tspan.text(line.join(' '));
-                line = [word];
-                tspan = addTspan(word);
-            }
-        }
+// do everything once the json data is loaded
+function ready(error, topo, edu) {
 
-        addTspan(words.pop());
+    if (error) {
+        throw error;
+    }
 
-        function addTspan(text) {
-            lineNumber += 1;
-            return (
-                node
-                    .append('tspan')
-                    .attr('x', x)
-                    .attr('y', y)
-                    .attr('dy', `${lineNumber * fontSize}px`)
-                    .text(text)
-            );
-        }
-    });
-}
-
-// read json data
-d3.json(mapData, function (data) {
-
-    // Give the data to this cluster layout:
-    var root = d3.hierarchy(data).sum((d) => d.value) // Here the size of each leave is given in the 'value' field in input data
-
-    // Then d3.treemap computes the position of each element of the hierarchy
-    d3.treemap()
-        .size([width, height])
-        //.paddingTop(28)
-        //.paddingRight(7)
-        //.paddingInner(3)      // Padding between each rectangle
-        //.paddingOuter(6)
-        .padding(1)
-        (root)
-
-    // prepare a color scale
-    var color = d3.scaleOrdinal()
-        .domain(data.children.map(d => d.name))
-        .range(["#d79921", "#458588", "#b16286", "#689d6a", "#d65d0e"])
-
-    // And a opacity scale
-    var opacity = d3.scaleLinear()
-        .domain([1559525, 20338986])
-        .range([.5, 1])
-
-    // use this information to add rectangles:
-    svg
-        .selectAll("rect")
-        .data(root.leaves())
-        .enter()
-        .append("rect")
-        .attr("class", "tile")
-        .attr("data-name", (d) => d.data.name)
-        .attr("data-category", (d) => d.data.category)
-        .attr("data-value", (d) => d.data.value)
-        .attr('x', function (d) { return d.x0; })
-        .attr('y', function (d) { return d.y0; })
-        .attr('width', function (d) { return d.x1 - d.x0; })
-        .attr('height', function (d) { return d.y1 - d.y0; })
-        .style("fill", function (d) { return color(d.parent.data.name) })
-        .style("opacity", function (d) { return opacity(d.data.value) })
+    // Draw the map
+    svg.append("g")
+        .attr("class", "counties")
+        .selectAll("path")
+        .data(topojson.feature(topo, topo.objects.counties).features)
+        .enter().append("path")
+        .attr("class", "county")
+        .attr("data-fips", (d => d.id))
+        .attr('data-education', function (d) {
+            var result = edu.filter(function (obj) {
+                return obj.fips === d.id;
+            });
+            return result[0].bachelorsOrHigher;
+        })
+        .attr('fill', function (d) {
+            // get the bacherlorsOrHigher value from the edu data with fips matching id from county data
+            var result = edu.filter(function (obj) {
+                return obj.fips === d.id;
+            });
+            return colorScale(result[0].bachelorsOrHigher);
+        })
+        .attr("d", path)
 
         // define mouse actions for tooltip
-
-        .on("mousemove", () => {
-            tooltip
-                .style("top", (d3.event.pageY - 10) + "px")
-                .style("left", (d3.event.pageX + 10) + "px");
-        })
-
         .on("mouseover", (d) => {
             tooltip.transition()
                 .duration(200)
-                .style("opacity", .9)
+                .style("opacity", .9);
             tooltip.html(
-                "Name: " + d.data.name +
-                "<br/>Category: " + d.data.category +
-                "<br/>Funding: $" + d.data.value)
+                "County: " + edu[edu.findIndex((item) => item.fips === d.id)].area_name +
+                "<br/>State: " + edu[edu.findIndex((item) => item.fips === d.id)].state +
+                "<br/>College: " + edu[edu.findIndex((item) => item.fips === d.id)].bachelorsOrHigher + "%")
                 .attr("id", "tooltip")
-                .attr("data-value", d.data.value)
+                .attr('data-education', function() {
+                    var result = edu.filter(function (obj) {
+                        return obj.fips === d.id;
+                    });
+                    return result[0].bachelorsOrHigher;
+                });
             tooltip
                 .style("top", (d3.event.pageY - 10) + "px")
                 .style("left", (d3.event.pageX + 10) + "px");
         })
-
-        .on("mouseout", () => {
+        .on("mouseout", (d) => {
             tooltip.transition()
                 .duration(500)
-                .style("opacity", 0);
+                .style("opacity", 0)
         });
 
-    // and to add the text labels
-    svg
-        .selectAll("text")
-        .data(root.leaves())
-        .enter()
-        .append("text")
-        .attr("x", function (d) { return d.x0 + 5 })    // +10 to adjust position (more right)
-        .attr("y", function (d) { return d.y0 + 20 })    // +20 to adjust position (lower)
-        .attr('data-width', (d) => d.x1 - d.x0)
-        .text((d) => d.data.name)
-        .attr("font-size", `${fontSize}px`)
-        .attr("fill", "black")
-        .call(formatText);
+    // add states outline
+    svg.append("path")
+        .datum(topojson.mesh(topo, topo.objects.states, (a, b) => a !== b))
+        .attr("class", "states")
+        .attr("fill", "none")
+        .attr("stroke", "black")
+        .attr("stroke-linejoin", "round")
+        .attr("d", path);
 
-    // add legend title
+    // add country outline
+    svg.append("path")
+        .datum(topojson.mesh(topo, topo.objects.nation))
+        .attr("class", "nation")
+        .attr("fill", "none")
+        .attr("stroke", "black")
+        .attr("stroke-linejoin", "round")
+        .attr("d", path);
+
     d3.select("body").append("section")
         .append("h2")
         .text("Legend");
-    
-    // add legend svg
+
     const legend = d3.select("body").append("svg")
         .attr("id", "legend")
         .attr("width", width)
-        .attr("height", legendSquareWidth + 200);
+        .attr("height", legendSquareWidth + 50);
 
-    // add rects to legend with colors that match data
     legend.selectAll("rect")
-        .data(root.descendants().filter((d) => d.depth === 1))
+        .data(legendSquares)
         .enter()
         .append("rect")
-        .attr("class", "legend-item")
+        .attr("class", "legend")
         .attr("width", legendSquareWidth)
         .attr("height", legendSquareWidth)
-        .style("fill", (d) => color(d.data.name))
+        .style("fill", d => colorScale(d))
         .attr("y", 0)
-        .attr("x", (d, i) => (width - 19 * legendSquareWidth) / 2 + i * legendSquareWidth);
-
-    // add labels to legend
+        .attr("x", (d, i) => (width-9*legendSquareWidth)/2 + i * legendSquareWidth);
     legend.selectAll("text")
-        .data(root.descendants().filter((d) => d.depth === 1))
+        .data(legendSquares)
         .enter()
         .append("text")
-        .text((d) => d.data.name)
-        .style("fill", (d) => color(d.data.name))
-        .attr("y", 45)
-        .attr("x", (d, i) => (width - 19 * legendSquareWidth) / 2 + i * legendSquareWidth + legendSquareWidth / 2.8)
-        .attr("transform", ((d, i) => "rotate(90, " + ((width - 19 * legendSquareWidth) / 2 + i * legendSquareWidth + legendSquareWidth / 2.8) + ",45)"));
-})
+        .text((d) => d.toFixed(0) + "%")
+        .attr("y", 55)
+        .attr("x", (d, i) => (width-9*legendSquareWidth)/2 + i * legendSquareWidth + legendSquareWidth/5);
+        
+    return svg.node();
+}
